@@ -5,13 +5,13 @@
 #
 # USAGE:
 #
-# draw_funnel p1 [, p2 [, s_cent [, beta_cent [, wall_width,
+# draw_funnel p0 [, p1 [, s_cent [, beta_cent [, wall_width,
 #     [, wall_buffer [, lower_wall [, upper_wall [, vec_step [, angle_sample ]]]]]]]]]
 #
 # ARGUMENTS:
 #
-# p1 = string, origin point of a funnel vector
-# p2 = string, terminal point of a funnel vector
+# p0 = string, origin point of a funnel vector
+# p1 = string, terminal point of a funnel vector
 # s_cent = float, inflection point of the sigmoid function
 # beta_cent = float, steepness of the sigmoid function
 # wall_width = float, the radius of the funnel at the widest point (excluding the buffer)
@@ -29,7 +29,7 @@
 import numpy as np
 from pymol import cmd
 
-def draw_funnel(p1, p2, s_cent=16, beta_cent=0.3, wall_width=15.5, wall_buffer=1.5, lower_wall=0, upper_wall=32, vec_step=2.5, angle_sample=18):
+def draw_funnel(p0, p1, s_cent=16, beta_cent=0.3, wall_width=15.5, wall_buffer=1.5, lower_wall=0, upper_wall=32, vec_step=2.5, angle_sample=18):
     s_cent = float(s_cent)
     beta_cent = float(beta_cent)
     wall_width = float(wall_width)
@@ -41,12 +41,12 @@ def draw_funnel(p1, p2, s_cent=16, beta_cent=0.3, wall_width=15.5, wall_buffer=1
     
     # get coords of the origin and vector points
     #origin = cmd.get_coords(selection, 1)[0]
-    origin = cmd.get_coords(p1, 1)[0]
+    origin = cmd.get_coords(p0, 1)[0]
     print('Origin:', origin)
     
-    v1 = cmd.get_coords(p1, 1)[0]
-    v2 = cmd.get_coords(p2, 1)[0]
-    # calculate the vector defined by points p1 and p2
+    v1 = cmd.get_coords(p0, 1)[0]
+    v2 = cmd.get_coords(p1, 1)[0]
+    # calculate the vector defined by points p0 and p1
     vec = np.array(v2, dtype=float) - np.array(v1, dtype=float)
     # BEWARE: inconsistency with linalg, if vec is a list and not an array!!!
 #    print(np.linalg.norm(vec), np.linalg.norm(v2 - v1))
