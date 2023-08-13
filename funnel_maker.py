@@ -51,7 +51,7 @@ def name_file_sequentially(filename):
         
     return filename.split('.')[0]+'.%i.'% (new_last_index)+filename.split('.')[-1]
 
-def write_funnel_pymol_session(structure_file, p1, p2, topology_file='', 
+def write_funnel_pymol_session(structure_file, p0, p1, topology_file='', 
                                extent = 0.85, extent_buffer = 0.15, 
                                l_proj = 0.5, u_proj = 3.5, beta_cent = 1.5, 
                                s_cent = 2.0, display_grid = False, center_grid_point=[], 
@@ -79,14 +79,14 @@ def write_funnel_pymol_session(structure_file, p1, p2, topology_file='',
         shutil.copy(structure_file, new_structure_file)
         shutil.copy(topology_file, new_topology_file)
         
+    p0_string = ''
     p1_string = ''
-    p2_string = ''
+    
+    for i in p0:
+        p0_string += 'ID %i '%i
     
     for i in p1:
         p1_string += 'ID %i '%i
-    
-    for i in p2:
-        p2_string += 'ID %i '%i
         
     with open(session_file_name, 'w') as PML_SCRIPT:
         if 'rst7' in structure_file.split('/')[-1]:
@@ -113,18 +113,18 @@ def write_funnel_pymol_session(structure_file, p1, p2, topology_file='',
             for line in grid_display_lines:
                 PML_SCRIPT.write(line)
         PML_SCRIPT.write('# take a point 10A deeper into the protein core\n')        
+        PML_SCRIPT.write('select p0, %s\n'%p0_string)
+        PML_SCRIPT.write('com p0\n')
+        PML_SCRIPT.write('show spheres, p0_COM\n')
+        PML_SCRIPT.write('\n')
+        PML_SCRIPT.write('# select all CA within 10A of the grid center, find its COM\n')
         PML_SCRIPT.write('select p1, %s\n'%p1_string)
         PML_SCRIPT.write('com p1\n')
         PML_SCRIPT.write('show spheres, p1_COM\n')
         PML_SCRIPT.write('\n')
-        PML_SCRIPT.write('# select all CA within 10A of the grid center, find its COM\n')
-        PML_SCRIPT.write('select p2, %s\n'%p2_string)
-        PML_SCRIPT.write('com p2\n')
-        PML_SCRIPT.write('show spheres, p2_COM\n')
-        PML_SCRIPT.write('\n')
         PML_SCRIPT.write('\n')
         PML_SCRIPT.write('# draw the funnel\n')
-        PML_SCRIPT.write('draw_funnel p1_COM, p2_COM, upper_wall=%f,\
+        PML_SCRIPT.write('draw_funnel p0_COM, p1_COM, upper_wall=%f,\
                                                       lower_wall=%f,\
                                                       s_cent=%f,\
                                                       beta_cent=%f,\
@@ -156,7 +156,7 @@ def make_funnel(structure_file, topology_file='',
                    
     Returns:
     
-    p1 and p2 - numpy arrays that contain atom IDs as found in the structure file
+    p0 and p1 - numpy arrays that contain atom IDs as found in the structure file
                    
     """
     if '.rst7' in structure_file.split('/')[-1]:
@@ -229,39 +229,39 @@ def make_funnel(structure_file, topology_file='',
 
     into_the_protein = near_ca.center_of_mass() - 10 * initial_normed_funnel_vector
 
-    p1_group = u.select_atoms('name CA and point %.3f %.3f %.3f 7'%(into_the_protein[0],\
+    p0_group = u.select_atoms('name CA and point %.3f %.3f %.3f 7'%(into_the_protein[0],\
                                                                     into_the_protein[1],\
                                                                     into_the_protein[2]),\
                              periodic = False)
+    p0 = []
     p1 = []
-    p2 = []
 
-    for i in p1_group.ids:
+    for i in p0_group.ids:
+        p0.append(i)
+
+    p0 = np.array(p0)
+
+    for i in near_ca.ids:
         p1.append(i)
 
     p1 = np.array(p1)
-
-    for i in near_ca.ids:
-        p2.append(i)
-
-    p2 = np.array(p2)
     
     # build the 'real' funnel vector
 
-    funnel_vector = near_ca.center_of_mass() - p1_group.center_of_mass()
+    funnel_vector = near_ca.center_of_mass() - p0_group.center_of_mass()
     normed_funnel_vector = funnel_vector / np.sqrt(np.sum(np.square(funnel_vector)))
 
     funnel_vector_pnts = []
 
     if output_pymol_session is True:
         # this bit is for display purposes only...
-        write_funnel_pymol_session(structure_file=structure_file, p1=p1, p2=p2, 
+        write_funnel_pymol_session(structure_file=structure_file, p0=p0, p1=p1, 
                                    topology_file=topology_file, display_grid=display_grid,
                                    center_grid_point=center_grid_point, 
                                    grid_display_lines=grid_display_lines, 
                                    special_point=special_point)
         
-    return p1, p2
+    return p0, p1
     
 def get_protein_ligand_ids(structure_file, topology_file='', ligand_name = 'MOL'):
     """
@@ -301,7 +301,7 @@ def get_protein_ligand_ids(structure_file, topology_file='', ligand_name = 'MOL'
     
     return protein_IDs, ligand_IDs
     
-def write_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_buffer = 0.15, 
+def write_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_buffer = 0.15, 
                       l_proj = 0.5, u_proj = 4.0, beta_cent = 1.5, 
                       s_cent = 2, deposition_pace = 1000,
                       print_pace = 1000, write_ProjectionOnAxis = False):
@@ -309,7 +309,7 @@ def write_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_buffer
     """
     Writes a standard wt fun-metaD plumed.dat file in the current working directory.
     
-    p1, p2 - numpy array, atom IDs that will act as anchor points for the funnel
+    p0, p1 - numpy array, atom IDs that will act as anchor points for the funnel
     
     protein_IDs - numpy array, atom IDs (inclusive) belonging to the protein / host molecule
     lig_IDs - numpy array, atom IDs (inclusive) belonging to the ligand / guest molecule
@@ -318,17 +318,17 @@ def write_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_buffer
     """
     version = 1.0
     
+    p0_str = ''
+    for i in p0:
+        p0_str += str(i) + ','
+    
+    p0_str = p0_str[:-1]
+
     p1_str = ''
     for i in p1:
         p1_str += str(i) + ','
     
     p1_str = p1_str[:-1]
-
-    p2_str = ''
-    for i in p2:
-        p2_str += str(i) + ','
-    
-    p2_str = p2_str[:-1]
     
     protein_str = '%i-%i'% (protein_IDs[0], protein_IDs[-1])
     lig_str = '%i-%i'% (lig_IDs[0], lig_IDs[-1])
@@ -353,8 +353,8 @@ def write_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_buffer
         FILE.write('###DEFINITION_OF_COMs###\n')
         FILE.write('########################\n')
         FILE.write('lig: COM ATOMS=%s\n'% lig_str)
+        FILE.write('p0: COM ATOMS=%s\n'% p0_str)
         FILE.write('p1: COM ATOMS=%s\n'% p1_str)
-        FILE.write('p2: COM ATOMS=%s\n'% p2_str)
         FILE.write('\n')
         FILE.write('\n')
         FILE.write('########################\n')
@@ -366,7 +366,7 @@ def write_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_buffer
         FILE.write('############\n')
         FILE.write('###PoA_CV ##\n')
         FILE.write('############\n')
-        FILE.write('pp: PROJECTION_ON_AXIS AXIS_ATOMS=p1,p2 ATOM=lig\n')
+        FILE.write('pp: PROJECTION_ON_AXIS AXIS_ATOMS=p0,p1 ATOM=lig\n')
         FILE.write('\n')
         FILE.write('#######################\n')
         FILE.write('###FUNNEL_PARAMETERS###\n')
@@ -427,7 +427,7 @@ def write_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_buffer
         FILE.write('\n')
         FILE.write('PRINT ARG=* STRIDE=%i FILE=COLVAR FMT=%%8.4f\n'% print_pace)
         
-def write_opes_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_buffer = 0.15, 
+def write_opes_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_buffer = 0.15, 
                       l_proj = 0.5, u_proj = 4.0, beta_cent = 1.5, 
                       s_cent = 2, deposition_pace = 1000, barrier = 60,
                       print_pace = 1000, write_ProjectionOnAxis = False):
@@ -435,7 +435,7 @@ def write_opes_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_b
     """
     Writes a standard wt fun-OPES plumed.dat file
     
-    p1, p2 - numpy array, atom IDs that will act as anchor points for the funnel
+    p0, p1 - numpy array, atom IDs that will act as anchor points for the funnel
     
     protein_IDs - numpy array, atom IDs (inclusive) belonging to the protein / host molecule
     lig_IDs - numpy array, atom IDs (inclusive) belonging to the ligand / guest molecule
@@ -444,17 +444,17 @@ def write_opes_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_b
     """
     version = 1.0
     
+    p0_str = ''
+    for i in p0:
+        p0_str += str(i) + ','
+    
+    p0_str = p0_str[:-1]
+
     p1_str = ''
     for i in p1:
         p1_str += str(i) + ','
     
     p1_str = p1_str[:-1]
-
-    p2_str = ''
-    for i in p2:
-        p2_str += str(i) + ','
-    
-    p2_str = p2_str[:-1]
     
     protein_str = '%i-%i'% (protein_IDs[0], protein_IDs[-1])
     lig_str = '%i-%i'% (lig_IDs[0], lig_IDs[-1])
@@ -480,8 +480,8 @@ def write_opes_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_b
         FILE.write('###DEFINITION_OF_COMs###\n')
         FILE.write('########################\n')
         FILE.write('lig: COM ATOMS=%s\n'% lig_str)
+        FILE.write('p0: COM ATOMS=%s\n'% p0_str)
         FILE.write('p1: COM ATOMS=%s\n'% p1_str)
-        FILE.write('p2: COM ATOMS=%s\n'% p2_str)
         FILE.write('\n')
         FILE.write('\n')
         FILE.write('########################\n')
@@ -493,7 +493,7 @@ def write_opes_plumed_file(p1, p2, protein_IDs, lig_IDs, extent = 0.60, extent_b
         FILE.write('############\n')
         FILE.write('###PoA_CV ##\n')
         FILE.write('############\n')
-        FILE.write('pp: PROJECTION_ON_AXIS AXIS_ATOMS=p1,p2 ATOM=lig\n')
+        FILE.write('pp: PROJECTION_ON_AXIS AXIS_ATOMS=p0,p1 ATOM=lig\n')
         FILE.write('\n')
         FILE.write('#######################\n')
         FILE.write('###FUNNEL_PARAMETERS###\n')
@@ -562,8 +562,8 @@ def get_funnel_definitions_from_plumed(plumed_file):
     
     Returns:
     
-    p1 - numpy array, atom IDs
-    p2 - numpy array, atoms IDs
+    p0 - numpy array, atom IDs
+    p1 - numpy array, atoms IDs
     s_cent - float
     beta_cent - float
     wall_width - float
@@ -582,24 +582,24 @@ def get_funnel_definitions_from_plumed(plumed_file):
     # uwall: UPPER_WALLS ARG=pp.proj AT=3.0 KAPPA=20000.0 EXP=2 EPS=1        # Upper Wall (the ending point of the funnel)
 
     
+    p0 = []
     p1 = []
-    p2 = []
     for line in plumed_file_lst:
-        if 'p1:' in line:
-            p1_str = line.split('=')[1]
+        if 'p0:' in line:
+            p0_str = line.split('=')[1]
 
+            p0_list = p0_str.split(',')
+            for i in p0_list:
+                p0.append(int(i))
+                
+            p0 = np.array(p0)
+        elif 'p1:' in line:
+            p1_str = line.split('=')[1]
             p1_list = p1_str.split(',')
             for i in p1_list:
                 p1.append(int(i))
                 
             p1 = np.array(p1)
-        elif 'p2:' in line:
-            p2_str = line.split('=')[1]
-            p2_list = p2_str.split(',')
-            for i in p2_list:
-                p2.append(int(i))
-                
-            p2 = np.array(p2)
         elif 's_cent:' in line:
             s_cent = float(line.split('=')[1][:4])
         elif 'beta_cent:' in line:
@@ -613,7 +613,7 @@ def get_funnel_definitions_from_plumed(plumed_file):
         elif 'uwall:' in line:
             uwall = float(line.split('=')[2][:3])
 
-    return p1, p2, s_cent, beta_cent, wall_width, wall_buffer, lwall, uwall
+    return p0, p1, s_cent, beta_cent, wall_width, wall_buffer, lwall, uwall
 
 def write_ProjectionOnAxis_script():
 
@@ -756,7 +756,7 @@ def write_ProjectionOnAxis_script():
         SCRIPT.write("}\n")
         SCRIPT.write("}\n")
 
-def write_run_py(structure_file,topology_file,run_time,lig_ids,p1_ids,p2_ids,lower_wall,upper_wall,wall_buffer,wall_width,s_cent,beta_cent):
+def write_run_py(structure_file,topology_file,run_time,lig_ids,p0_ids,p1_ids,lower_wall,upper_wall,wall_buffer,wall_width,s_cent,beta_cent):
     with open('run.py','w') as FILE:
         FILE.write('from simtk.openmm import *\n')
         FILE.write('from simtk.openmm.app import *\n')
@@ -993,13 +993,13 @@ def write_run_py(structure_file,topology_file,run_time,lig_ids,p1_ids,p2_ids,low
         FILE.write('\n')
         FILE.write('\n')
         FILE.write(f'lig = [ i for i in range({lig_ids[0]-1}, {lig_ids[-1]})]\n')
+        FILE.write(f'p0 = {[ i-1 for i in p0_ids]}\n')
         FILE.write(f'p1 = {[ i-1 for i in p1_ids]}\n')
-        FILE.write(f'p2 = {[ i-1 for i in p2_ids]}\n')
         FILE.write('\n')
         FILE.write("projection = CustomCentroidBondForce(3, 'distance(g1,g2)*cos(angle(g1,g2,g3))')\n")
         FILE.write('projection.addGroup(lig)\n')
+        FILE.write('projection.addGroup(p0)\n')
         FILE.write('projection.addGroup(p1)\n')
-        FILE.write('projection.addGroup(p2)\n')
         FILE.write('projection.addBond([0,1,2])\n')
         FILE.write('projection.setUsesPeriodicBoundaryConditions(True)\n')
         FILE.write('\n')
@@ -1008,8 +1008,8 @@ def write_run_py(structure_file,topology_file,run_time,lig_ids,p1_ids,p2_ids,low
         FILE.write('\n')
         FILE.write("extent = CustomCentroidBondForce(3, 'distance(g1,g2)*sin(angle(g1,g2,g3))')\n")
         FILE.write('extent.addGroup(lig)\n')
+        FILE.write('extent.addGroup(p0)\n')
         FILE.write('extent.addGroup(p1)\n')
-        FILE.write('extent.addGroup(p2)\n')
         FILE.write('extent.addBond([0,1,2])\n')
         FILE.write('extent.setUsesPeriodicBoundaryConditions(True)\n')
         FILE.write('\n')
@@ -1026,8 +1026,8 @@ def write_run_py(structure_file,topology_file,run_time,lig_ids,p1_ids,p2_ids,low
         FILE.write('\n')
         FILE.write("upper_wall_rest = CustomCentroidBondForce(3, '(k/2)*max(distance(g1,g2)*cos(angle(g1,g2,g3)) - upper_wall, 0)^2')\n")
         FILE.write('upper_wall_rest.addGroup(lig)\n')
+        FILE.write('upper_wall_rest.addGroup(p0)\n')
         FILE.write('upper_wall_rest.addGroup(p1)\n')
-        FILE.write('upper_wall_rest.addGroup(p2)\n')
         FILE.write('upper_wall_rest.addBond([0,1,2])\n')
         FILE.write("upper_wall_rest.addGlobalParameter('k', k1)\n")
         FILE.write("upper_wall_rest.addGlobalParameter('upper_wall', upper_wall)\n")
@@ -1044,8 +1044,8 @@ def write_run_py(structure_file,topology_file,run_time,lig_ids,p1_ids,p2_ids,low
         FILE.write('\n')
         FILE.write("dist_restraint = CustomCentroidBondForce(3, '(k/2)*max(distance(g1,g2)*sin(angle(g1,g2,g3)) - (a/(1+exp(b*(distance(g1,g2)*cos(angle(g1,g2,g3))-c)))+d), 0)^2')\n")
         FILE.write('dist_restraint.addGroup(lig)\n')
+        FILE.write('dist_restraint.addGroup(p0)\n')
         FILE.write('dist_restraint.addGroup(p1)\n')
-        FILE.write('dist_restraint.addGroup(p2)\n')
         FILE.write('dist_restraint.addBond([0,1,2])\n')
         FILE.write("dist_restraint.addGlobalParameter('k', k2)\n")
         FILE.write("dist_restraint.addGlobalParameter('a', wall_width)\n")
@@ -1062,8 +1062,8 @@ def write_run_py(structure_file,topology_file,run_time,lig_ids,p1_ids,p2_ids,low
         FILE.write('lower_wall = lower_wall*nanometer\n')
         FILE.write("lower_wall_rest = CustomCentroidBondForce(3, '(k/2)*min(distance(g1,g2)*cos(angle(g1,g2,g3)) - lower_wall, 0)^2')\n")
         FILE.write('lower_wall_rest.addGroup(lig)\n')
+        FILE.write('lower_wall_rest.addGroup(p0)\n')
         FILE.write('lower_wall_rest.addGroup(p1)\n')
-        FILE.write('lower_wall_rest.addGroup(p2)\n')
         FILE.write('lower_wall_rest.addBond([0,1,2])\n')
         FILE.write("lower_wall_rest.addGlobalParameter('k', k1)\n")
         FILE.write("lower_wall_rest.addGlobalParameter('lower_wall', lower_wall)\n")
