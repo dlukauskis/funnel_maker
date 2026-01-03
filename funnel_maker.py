@@ -2,11 +2,12 @@ import MDAnalysis as mda
 import os
 import numpy as np
 import shutil
-import subprocess as sp
+from typing import Tuple
 import sys
 import datetime
 
-def name_file_sequentially(filename):
+
+def name_file_sequentially(filename: str) -> str:
     """
     Checks if there is a file already with
     the same name. If yes, then gives the file
@@ -51,12 +52,23 @@ def name_file_sequentially(filename):
         
     return filename.split('.')[0]+'.%i.'% (new_last_index)+filename.split('.')[-1]
 
-def write_funnel_pymol_session(structure_file, p0, p1, topology_file='', 
-                               extent = 0.85, extent_buffer = 0.15, 
-                               l_proj = 0.5, u_proj = 3.5, beta_cent = 1.5, 
-                               s_cent = 2.0, display_grid = False, center_grid_point=[], 
-                               grid_display_lines=[], special_point=[]):
-    
+
+def write_funnel_pymol_session(
+    structure_file: str, 
+    p0: list, 
+    p1: list,
+    topology_file: str ='', 
+    extent: float = 0.85,
+    extent_buffer: float = 0.15, 
+    l_proj: float = 0.5,
+    u_proj: float = 3.5,
+    beta_cent: float = 1.5, 
+    s_cent: float = 2.0,
+    display_grid: bool = False, 
+    center_grid_point: list = [], 
+    grid_display_lines: list = [], 
+    special_point: list = [],
+) -> None:
     """
     Writes a plumed script that loads the structure (and topology) file
     and draws a funnel based on your inputs.
@@ -74,7 +86,7 @@ def write_funnel_pymol_session(structure_file, p0, p1, topology_file='',
         new_topology_file = os.path.join(working_dir, top_prefix + '.top')
         
         strc_prefix = structure_file.split('/')[-1].split('.')[0]
-        new_structure_file = os.path.join(working_dir, top_prefix + '.rst')
+        new_structure_file = os.path.join(working_dir, strc_prefix + '.rst')
         
         shutil.copy(structure_file, new_structure_file)
         shutil.copy(topology_file, new_topology_file)
@@ -133,11 +145,15 @@ def write_funnel_pymol_session(structure_file, p0, p1, topology_file='',
                                                                            beta_cent,extent*10,extent_buffer*10)) 
                                                      # x10 because its in A, not nm
 
-def make_funnel(structure_file, topology_file='',
-                grid_coords = [],
-                ligand_name = 'MOL',
-                output_pymol_session = False,
-                display_grid = False):
+
+def make_funnel(
+    structure_file: str, 
+    topology_file: str = '',
+    grid_coords: list = [],
+    ligand_name: str = 'MOL',
+    output_pymol_session: bool = False,
+    display_grid: bool = False,
+) -> Tuple[list, list]:
     """
     Defines the funnel based on search criteria, essentially pointing away 
     from the protein.
@@ -178,7 +194,7 @@ def make_funnel(structure_file, topology_file='',
                          Please specify either coordinates for the grid or an appropriate residue\n
                          name for the ligand.""")
 
-    # lets project a grid on the binding site
+    # let's project a grid on the binding site
     
     # 20 angstrom grid edge
     grid_length = 20
@@ -203,9 +219,9 @@ def make_funnel(structure_file, topology_file='',
                     grid_display_lines.append('pseudoatom g_pnt%i, pos=[%.3f, %.3f, %.3f]\n'%(n, x, y, z))
                     grid_display_lines.append('show spheres, g_pnt%i\n'%(n))
 
-                protein_atoms = u.select_atoms('protein and point %.3f %.3f %.3f %.3f'% (x,y,z,\
-                                                                                        search_radius),\
-                                               periodic = False)
+                protein_atoms = u.select_atoms(
+                    'protein and point %.3f %.3f %.3f %.3f'% (x,y,z, search_radius), periodic = False,
+                )
                 if len(protein_atoms) > 0:
                     if display_grid is True:
                         grid_display_lines.append('color red, g_pnt%i\n'%(n))
@@ -214,25 +230,27 @@ def make_funnel(structure_file, topology_file='',
                 n += 1            
     
     # if no protein detected at multiple grid points, find where the average coord is
-    special_point = np.array([np.mean(np.array(solvent_com)[:,0]),\
-                              np.mean(np.array(solvent_com)[:,1]),\
+    special_point = np.array([np.mean(np.array(solvent_com)[:,0]),
+                              np.mean(np.array(solvent_com)[:,1]),
                               np.mean(np.array(solvent_com)[:,2])])
 
     # select all C alpha atoms within 10 A of the ligand/center of the grid
-    near_ca = u.select_atoms('name CA and point %.3f %.3f %.3f 10'% (center_grid_point[0],\
-                                                                    center_grid_point[1],\
-                                                                    center_grid_point[2]),
-                             periodic = False)
+    near_ca = u.select_atoms(
+        'name CA and point %.3f %.3f %.3f 10'% (
+            center_grid_point[0], center_grid_point[1], center_grid_point[2]
+        ), periodic = False,
+    )
 
     initial_funnel_vector = special_point - near_ca.center_of_mass()
     initial_normed_funnel_vector = initial_funnel_vector / np.sqrt(np.sum(np.square(initial_funnel_vector)))
 
     into_the_protein = near_ca.center_of_mass() - 10 * initial_normed_funnel_vector
 
-    p0_group = u.select_atoms('name CA and point %.3f %.3f %.3f 7'%(into_the_protein[0],\
-                                                                    into_the_protein[1],\
-                                                                    into_the_protein[2]),\
-                             periodic = False)
+    p0_group = u.select_atoms(
+        'name CA and point %.3f %.3f %.3f 7'%(
+            into_the_protein[0], into_the_protein[1], into_the_protein[2]
+        ), periodic = False,
+    )
     p0 = []
     p1 = []
 
@@ -262,8 +280,13 @@ def make_funnel(structure_file, topology_file='',
                                    special_point=special_point)
         
     return p0, p1
-    
-def get_protein_ligand_ids(structure_file, topology_file='', ligand_name = 'MOL'):
+
+
+def get_protein_ligand_ids(
+    structure_file: str, 
+    topology_file: str = '', 
+    ligand_name: str = 'MOL',
+) -> Tuple[list, list]:
     """
     Returns a np array of atom IDs for 
     
@@ -300,19 +323,30 @@ def get_protein_ligand_ids(structure_file, topology_file='', ligand_name = 'MOL'
     ligand_IDs = np.array(ligand_IDs)
     
     return protein_IDs, ligand_IDs
-    
-def write_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_buffer = 0.15, 
-                      l_proj = 0.5, u_proj = 4.0, beta_cent = 1.5, 
-                      s_cent = 2, deposition_pace = 1000,
-                      print_pace = 1000, write_ProjectionOnAxis = False):
-    
+
+
+def write_plumed_file(
+    p0: list,
+    p1: list,
+    protein_ids: list,
+    lig_ids: list,
+    extent: float = 0.60, 
+    extent_buffer: float = 0.15, 
+    l_proj: float = 0.5,
+    u_proj: float = 4.0,
+    beta_cent: float = 1.5, 
+    s_cent: int = 2,
+    deposition_pace: int = 1000,
+    print_pace: int = 1000,
+    write_projection_on_axis: bool = False,
+) -> None:
     """
     Writes a standard wt fun-metaD plumed.dat file in the current working directory.
     
     p0, p1 - numpy array, atom IDs that will act as anchor points for the funnel
     
-    protein_IDs - numpy array, atom IDs (inclusive) belonging to the protein / host molecule
-    lig_IDs - numpy array, atom IDs (inclusive) belonging to the ligand / guest molecule
+    protein_ids - numpy array, atom IDs (inclusive) belonging to the protein / host molecule
+    lig_ids - numpy array, atom IDs (inclusive) belonging to the ligand / guest molecule
     
     Length units are in nm.
     """
@@ -330,8 +364,8 @@ def write_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_buffer
     
     p1_str = p1_str[:-1]
     
-    protein_str = '%i-%i'% (protein_IDs[0], protein_IDs[-1])
-    lig_str = '%i-%i'% (lig_IDs[0], lig_IDs[-1])
+    protein_str = '%i-%i'% (protein_ids[0], protein_ids[-1])
+    lig_str = '%i-%i'% (lig_ids[0], lig_ids[-1])
 
     with open('plumed.dat', 'w') as FILE:
         FILE.write('####################################\n')
@@ -344,7 +378,7 @@ def write_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_buffer
         FILE.write('###############################################\n')
         FILE.write('###DEFINE RADIUS + CALC PROT-LIG VECTOR COMP###\n')
         FILE.write('###############################################\n')
-        if write_ProjectionOnAxis is True:
+        if write_projection_on_axis:
             FILE.write('LOAD FILE=ProjectionOnAxis.cpp\n')
         FILE.write('\n')
         FILE.write('WHOLEMOLECULES STRIDE=1 ENTITY0=%s ENTITY1=%s\n'% (protein_str, lig_str))
@@ -426,18 +460,30 @@ def write_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_buffer
         FILE.write('... METAD\n')
         FILE.write('\n')
         FILE.write('PRINT ARG=* STRIDE=%i FILE=COLVAR FMT=%%8.4f\n'% print_pace)
-        
-def write_opes_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_buffer = 0.15, 
-                      l_proj = 0.5, u_proj = 4.0, beta_cent = 1.5, 
-                      s_cent = 2, deposition_pace = 1000, barrier = 60,
-                      print_pace = 1000, write_ProjectionOnAxis = False):
-    
+
+
+def write_opes_plumed_file(
+    p0: list,
+    p1: list, 
+    protein_ids: list,
+    lig_ids: list,
+    extent: float = 0.60, 
+    extent_buffer: float = 0.15, 
+    l_proj: float = 0.5, 
+    u_proj: float = 4.0, 
+    beta_cent: float = 1.5, 
+    s_cent: int = 2,
+    deposition_pace: int = 1000, 
+    barrier: int = 60,
+    print_pace: int = 1000, 
+    write_projection_on_axis: bool = False,
+) -> None:    
     """
     Writes a standard wt fun-OPES plumed.dat file
     
     p0, p1 - numpy array, atom IDs that will act as anchor points for the funnel
     
-    protein_IDs - numpy array, atom IDs (inclusive) belonging to the protein / host molecule
+    protein_ids - numpy array, atom IDs (inclusive) belonging to the protein / host molecule
     lig_IDs - numpy array, atom IDs (inclusive) belonging to the ligand / guest molecule
     
     Length units are in nm.
@@ -456,8 +502,8 @@ def write_opes_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_b
     
     p1_str = p1_str[:-1]
     
-    protein_str = '%i-%i'% (protein_IDs[0], protein_IDs[-1])
-    lig_str = '%i-%i'% (lig_IDs[0], lig_IDs[-1])
+    protein_str = '%i-%i'% (protein_ids[0], protein_ids[-1])
+    lig_str = '%i-%i'% (lig_ids[0], lig_ids[-1])
     
     with open('plumed.dat', 'w') as FILE:
         FILE.write('####################################\n')
@@ -470,7 +516,7 @@ def write_opes_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_b
         FILE.write('###############################################\n')
         FILE.write('###DEFINE RADIUS + CALC PROT-LIG VECTOR COMP###\n')
         FILE.write('###############################################\n')
-        if write_ProjectionOnAxis is True:
+        if write_projection_on_axis:
             FILE.write('LOAD FILE=ProjectionOnAxis.cpp\n')
         FILE.write('LOAD FILE=OPESwt.cpp\n')
         FILE.write('\n')
@@ -554,16 +600,18 @@ def write_opes_plumed_file(p0, p1, protein_IDs, lig_IDs, extent = 0.60, extent_b
         FILE.write('... OPES_WT\n')
         FILE.write('\n')
         FILE.write('PRINT ARG=* STRIDE=%i FILE=COLVAR FMT=%%8.4f\n'% print_pace)
-        
-def get_funnel_definitions_from_plumed(plumed_file):
-    
+
+
+def get_funnel_definitions_from_plumed(
+    plumed_file: str,
+) -> Tuple[list, list, float, float, float, float, float, float]:
     """
     Reads a 'plumed.dat' file and extracts the funnel definitions
     
     Returns:
     
-    p0 - numpy array, atom IDs
-    p1 - numpy array, atoms IDs
+    p0 - list, atom IDs
+    p1 - list, atoms IDs
     s_cent - float
     beta_cent - float
     wall_width - float
@@ -581,9 +629,9 @@ def get_funnel_definitions_from_plumed(plumed_file):
     # lwall: LOWER_WALLS ARG=pp.proj AT=0.5 KAPPA=20000.0 EXP=2 EPS=1        # Lower Wall (the starting point of the funnel)
     # uwall: UPPER_WALLS ARG=pp.proj AT=3.0 KAPPA=20000.0 EXP=2 EPS=1        # Upper Wall (the ending point of the funnel)
 
-    
     p0 = []
     p1 = []
+    s_cent, beta_cent, wall_width, wall_buffer, lwall, uwall = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     for line in plumed_file_lst:
         if 'p0:' in line:
             p0_str = line.split('=')[1]
@@ -592,14 +640,12 @@ def get_funnel_definitions_from_plumed(plumed_file):
             for i in p0_list:
                 p0.append(int(i))
                 
-            p0 = np.array(p0)
         elif 'p1:' in line:
             p1_str = line.split('=')[1]
             p1_list = p1_str.split(',')
             for i in p1_list:
                 p1.append(int(i))
-                
-            p1 = np.array(p1)
+
         elif 's_cent:' in line:
             s_cent = float(line.split('=')[1][:4])
         elif 'beta_cent:' in line:
@@ -615,7 +661,7 @@ def get_funnel_definitions_from_plumed(plumed_file):
 
     return p0, p1, s_cent, beta_cent, wall_width, wall_buffer, lwall, uwall
 
-def write_ProjectionOnAxis_script():
+def write_projection_on_axis_script() -> None:
 
     with open('ProjectionOnAxis.cpp','w') as SCRIPT:
         SCRIPT.write("/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n")
@@ -756,7 +802,20 @@ def write_ProjectionOnAxis_script():
         SCRIPT.write("}\n")
         SCRIPT.write("}\n")
 
-def write_run_py(structure_file,topology_file,run_time,lig_ids,p0_ids,p1_ids,lower_wall,upper_wall,wall_buffer,wall_width,s_cent,beta_cent):
+def write_run_py(
+    structure_file: str,
+    topology_file: str,
+    run_time: float,
+    lig_ids: list,
+    p0_ids: list,
+    p1_ids: list,
+    lower_wall: float,
+    upper_wall: float,
+    wall_buffer: float,
+    wall_width: float,
+    s_cent: float,
+    beta_cent: float,
+) -> None:
     with open('run.py','w') as FILE:
         FILE.write('from simtk.openmm import *\n')
         FILE.write('from simtk.openmm.app import *\n')
